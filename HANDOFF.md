@@ -101,6 +101,17 @@ El seed imprime un cuadro con `usuario | password` para los 10 panas. **Cópialo
   2. Implementar el fetch + normalización de nombres de equipos contra `teams.code` (ISO3).
   3. Si hay mismatch, escribir a `scores_audit` con `status='needs_admin_review'`.
   4. Configurar `vercel.json` con cron diario a 8 AM ECU (`0 13 * * *` UTC).
+- **Expandir `/resultados` con rondas eliminatorias.** Hoy la grilla solo muestra los 32 que pasan de fase de grupos (12 grupos × 3 slots). Falta agregar más secciones de filas para mostrar predicho-vs-real de:
+  - **R16** (16 picks: ganadores de cada cruce P73–P88).
+  - **Cuartos / R8** (8 picks: ganadores de octavos).
+  - **Semis** (4 picks).
+  - **Final**: campeón + subcampeón.
+  - **Tercer puesto**: 3° + 4°.
+  Para "predicho" se lee de `prediction_bracket_picks`; para "real" de `bracket_matches.official_winner_id / official_loser_id`. Mantener el mismo patrón visual (sub-columnas Predicho | Real por pana).
+- **Total agregado por pana ordenado por puntaje.** Hoy las columnas se ordenan alfabéticamente siempre. Cambiar a:
+  - Antes del kickoff (`now < tournament_start_at`): orden alfabético por `display_name`.
+  - Después del kickoff: orden **descendente por `predictions.total_score`**, con tiebreaker alfabético. El "ranking" se ve directo en las columnas (el primero a la izquierda), redundante con la sección de ranking de abajo pero útil para escanear.
+  Cambio puntual en la query inicial de `src/app/resultados/page.tsx` (el `order by u.display_name asc`).
 - **Tabla FIFA de allocation de terceros:** encodeada en `src/data/fifa-third-place-allocation-2026.ts` con la elegibilidad por slot (de los PDFs). El matching usa backtracking. Si FIFA libera la tabla oficial 2026, reemplazar por lookup exacto.
 - **Polish móvil:** el bracket en pantallas < 1280px scrollea horizontalmente; la grilla de `/resultados` también scrollea horizontalmente cuando hay varios pagadores. Funciona pero hay margen para una vista colapsada (tabs por participante) en mobile. Resto de páginas ya son responsive.
 - **Monto en QR Deuna:** la sección de pago en la landing dice "Escanea para pagar por Deuna" sin monto explícito. Si quieres mostrar el monto del bolo, hardcodearlo en `src/app/page.tsx`.
@@ -181,6 +192,66 @@ Proyecto está en team `altris` (plan pagado). La app cabe perfectamente en Hobb
 3. Mantiene deployment, dominio y history. Cero downtime.
 
 Riesgo de ToS en Hobby para este uso: virtualmente cero (10 amigos, plata afuera de Vercel via Deuna). El sitio corporativo de Altris (que captura leads) sí cae en "commercial use" y debería quedarse en plan pagado o moverse a Cloudflare Pages.
+
+---
+
+## Seguridad anti-bugs en producción (qué hacer si encuentras bugs después de que los panas hayan enviado)
+
+**Regla de oro:** la predicción cruda (`prediction_group_scores` + `prediction_bracket_picks`) es fuente de verdad. Todo lo demás — standings, R32, R16, puntos, ranking — se deriva en runtime o se recalcula con `recomputeAllScores()`. La mayoría de los bugs viven en el pipeline de derivación, no en la data guardada.
+
+### Por tipo de bug
+
+1. **Bug de display o cálculo (95% de los casos):** editas → `git push` → `vercel deploy --prod --yes`. Si tocaste scoring, después corres:
+   ```bash
+   npx tsx --env-file=.env.local -e "
+   import { recomputeAllScores } from './src/lib/scoring-recompute';
+   recomputeAllScores().then(() => console.log('done'));
+   "
+   ```
+   Data del pana: intacta. Solo se recalcula `predictions.total_score` y `predictions.score_breakdown`.
+
+2. **Un pana específico necesita corregir su predicción** (ej: "me equivoqué al darle Enviar"): desbloquear quirúrgicamente sin tocar a nadie más:
+   ```sql
+   update predictions set status='draft', submitted_at=null where user_id='<uuid>';
+   ```
+   El pana entra a la app, edita, vuelve a darle submit (con modal y `ENVIAR`). Hacerlo con discreción — si lo haces para uno, todos van a querer.
+
+3. **Data corrupta masiva (raro, peor caso):**
+   - **Plan A — Neon PITR:** Neon free tier graba 24h de changelog. Consola Neon → Restore → eliges timestamp justo antes del bug → restauras a un nuevo branch → validas → promueves o copias rows con `INSERT ... SELECT` cross-branch.
+   - **Plan B — SQL quirúrgico:** si solo se afectaron ciertas rows y sabes qué deberían tener, script puntual + `npx tsx --env-file=.env.local`.
+
+### Setup defensivo recomendado (cero costo) antes del lock date (9-jun)
+
+Mientras no haya submits, hacer lío en local no rompe nada. Una vez que los panas empiecen a enviar (status='submitted'), conviene tener:
+
+1. **Neon dev branch (FREE):** consola Neon → Branches → Create branch → "dev" desde `main`. Te da connection string aparte; lo pegas en `.env.local`. Local apunta a `dev`, prod sigue en `main`. Si corres `random-fill.ts` o `db:migrate` localmente, no jodes la data de los panas. Para sincronizar schema cuando agregas migración: la corres en `dev`, validas, después con `DATABASE_URL` apuntando a `main` corres la misma migración.
+
+2. **Audit log table (FREE, 1 migración):**
+   ```sql
+   create table audit_log (
+     id uuid primary key default gen_random_uuid(),
+     happened_at timestamptz default now(),
+     actor_user_id uuid references users(id),
+     action text,
+     target_user_id uuid references users(id),
+     details jsonb
+   );
+   ```
+   + Triggers en `prediction_group_scores` y `prediction_bracket_picks` que registren updates/deletes después del lock. Si después alguien dice "esto no lo puse así", hay registro.
+
+3. **Endpoint admin "desbloquear submit" (FREE, ~10 líneas):** botón en `/admin` que llame a un endpoint que pone `status='draft'` + registra en `audit_log`. Evita que tengas que entrar a Neon con SQL cuando un pana pide corrección.
+
+4. **Backup manual antes de algo arriesgado:**
+   ```bash
+   pg_dump "$DATABASE_URL" > "backup-$(date +%Y%m%d-%H%M).sql"
+   ```
+   Se queda en tu máquina, no en cloud, gratis. Hacerlo antes de cualquier migración, recompute masivo, o experimento raro.
+
+### Lo que NO recomiendo gastar plata
+
+- Neon Launch ($19/mes) para 7-30 días de PITR — para uso lúdico, el free de 24h alcanza.
+- Backups automáticos a S3 — pg_dump manual antes de operaciones riesgosas es suficiente.
+- Vercel Pro para el polla — Hobby alcanza (la app vive en team `altris` Pro hoy pero solo porque ya estaba pagado para Altris empresa).
 
 ---
 
