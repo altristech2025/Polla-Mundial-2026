@@ -1,24 +1,35 @@
 # Handoff — Polla Mundial 2026
 
-> Estado: MVP funcional con UX completa. Falta: deploy a Vercel + cron de resultados con API real.
+> Estado: en producción en Vercel. UX endurecida. Falta cron de resultados con API real cuando arranque el Mundial.
 > Repo: https://github.com/altristech2025/Polla-Mundial-2026
+> Live: https://polla-mundial-2026-altris.vercel.app
 
 ---
 
-## 🚨 Bug crítico arreglado en este commit (verificar antes de seguir)
+## 📦 Sesión 2026-05-13 — resumen
 
-**Síntoma:** la página devolvía 404 o entraba en loop de redirects (`/` → `/mi-polla` → `/login` → `/` → ...).
+Cambios funcionales y deploy a producción.
 
-**Causa raíz:** el JWT del navegador apuntaba a un user que ya no existía en DB después de un reseed. Cada server component intentaba redirigir al "otro lado" sin invalidar el cookie.
+**UX endurecida:**
+- Modal de envío con doble confirmación: checkbox "entiendo que no podré editar" + escribir literalmente la palabra **ENVIAR** para habilitar el botón. Extraído a [`src/components/submit-confirm-modal.tsx`](src/components/submit-confirm-modal.tsx). Casi imposible enviar por error.
+- CTA "Enviar pronóstico definitivo" agregado al fondo de [`src/app/mi-polla/bracket/bracket-client.tsx`](src/app/mi-polla/bracket/bracket-client.tsx) usando el mismo modal — el usuario ya no tiene que volver a `/mi-polla` paso 3 para enviar.
+- Tour modal ([`src/components/tour-modal.tsx`](src/components/tour-modal.tsx)): borrado el paso "Orden final top 4" (ya no aplica — top 4 se deriva de los picks P103/P104). 5 pasos → 4 pasos. Al click en "No, gracias" aparece despedida grande **"bueno shunsho, espero lo logres!!!"** con animación de entrada (`@keyframes tourFarewell` en `globals.css`).
 
-**Fix aplicado:**
-- `src/app/page.tsx`: ahora verifica que el `session.user.id` exista realmente en `users` antes de redirigir a `/mi-polla`. Si no existe, cae al login form.
-- `src/app/mi-polla/page.tsx`: si el user no existe, **limpia los cookies de Auth.js** (`authjs.session-token`, `__Secure-authjs.session-token`) y redirige a `/`.
-- `src/proxy.ts`: unauthenticated → `/` (no `/login`).
-- `src/auth.ts`: `pages.signIn = "/"` (Auth.js no intenta redirigir a una ruta inexistente).
-- `src/app/login/page.tsx`: redirect server-side a `/` (compat con bookmarks viejos).
+**Tracking público del Mundial:**
+- Nueva página [`/resultados`](src/app/resultados/page.tsx) (server component). Gobernada por `app_config.tournament_start_at`:
+  - **Fase A** (pre-kickoff): countdown + sección "Quién debe" listando no-pagadores. Grid de tracking vacío. Aunque un usuario haya hecho submit, no se revela nada.
+  - **Fase B** (post-kickoff): grid 12 grupos × 3 slots × N pagadores. Cada pagador tiene dos sub-columnas (Predicho | Real). Slot 3 ("mejor tercero") solo se llena si la predicción/realidad lo deriva. Live projection: la columna Real se ordena como standings parciales según los partidos jugados. Footer con puntos por pagador. Ranking 1-10 al fondo.
+- **Regla dura:** solo pagadores (`users.has_paid = true`) tienen columna en la grilla y participan del ranking. Los no-pagadores solo aparecen en la sección "Quién debe".
+- Reuso de `computeGroupStandings` ([`src/lib/tiebreakers.ts`](src/lib/tiebreakers.ts)) y `determineBestThirds` ([`src/lib/qualification.ts:50`](src/lib/qualification.ts#L50)) para predicho y real.
+- Links de nav agregados desde `/mi-polla` y `/pronosticos`.
 
-**Verificar:** después de clonar y `npm run dev`, debe responder `200` en `/`, `/login` y `/mi-polla` (las dos primeras renderizan el login form si no estás autenticado; la tercera redirige a `/`).
+**Polish visual:**
+- Trofeo: el PNG original era 2752×1536 landscape con franjas negras enormes a los costados y una marca de agua. Recortado con `sips -c 1450 870 --cropOffset 40 940` a 870×1450 portrait apretado, sin marca de agua. Renderiza mucho mejor en `/mi-polla/bracket`.
+- Landing ([`src/app/page.tsx`](src/app/page.tsx)): sección de pago con **QR de Deuna** (`public/qr-deuna.jpeg`) debajo del login. Copy: "Pago de la polla — Escanea para pagar por Deuna".
+
+**Deploy:**
+- Live en `https://polla-mundial-2026-altris.vercel.app` (alias `*-gamma.vercel.app` también funciona).
+- Ver sección "Producción / Vercel" abajo para env vars y gotchas del primer deploy.
 
 ---
 
@@ -61,9 +72,10 @@ El seed imprime un cuadro con `usuario | password` para los 10 panas. **Cópialo
 - **Auth:** login por username + password en la landing (`/`). 10 panas pre-creados en `db/seed-participants.ts`.
 - **Fase de grupos (`/mi-polla/grupos`):** los 12 grupos con sus 6 partidos cada uno (datos FIFA reales sacados de Wikipedia ES). Usuario digita marcadores. Standings se recalculan en vivo. Autoguardado debounced (800ms). Indicador "Guardando / Guardado" arriba a la derecha. Panel resumen al pie muestra quién clasifica de cada grupo y los 8 mejores terceros.
 - **Bracket de eliminación (`/mi-polla/bracket`):** layout estilo "dos caminos a la copa" (7 columnas, mirror izq/der, trofeo PNG con animación float al centro). Click en equipo → propagación automática a la siguiente ronda. Picks aguas abajo se invalidan (borde rojo) si cambia algo aguas arriba.
-- **Submit definitivo:** `/api/me/submit` valida los 72 marcadores + 32 picks, marca `status='submitted'` + `submitted_at`. Endpoints de edición rechazan con 403 después. UI muestra banner "✓ Pronóstico enviado" + deshabilita inputs.
+- **Submit definitivo:** `/api/me/submit` valida los 72 marcadores + 32 picks, marca `status='submitted'` + `submitted_at`. Endpoints de edición rechazan con 403 después. UI muestra banner "✓ Pronóstico enviado" + deshabilita inputs. **Modal de confirmación endurecido**: checkbox "entiendo" + escribir literalmente `ENVIAR`. Componente compartido en `src/components/submit-confirm-modal.tsx`, usado desde `/mi-polla` paso 3 y desde el CTA al fondo de `/mi-polla/bracket`.
 - **Lock dates:** lock = **2026-06-09T23:59:00-05:00** (2 días antes del Mundial). Reveal = **2026-06-10T00:00:00-05:00** (1 día antes). Hardcoded en `app_config` (singleton row, id=1).
 - **Página pública de pronósticos (`/pronosticos`):** lista de participantes con estado de pago siempre visible. Antes del reveal solo nombres + "Pagó/Sin pagar" + countdown. Después del reveal: R32 (32 equipos) + R16 (16 equipos) de cada uno en grid.
+- **Página de resultados (`/resultados`):** tracking público del Mundial. Gobernada por `app_config.tournament_start_at`. Fase A (pre-kickoff): "Quién debe" + countdown, sin revelar pronósticos. Fase B (post-kickoff): grid 12 grupos × 3 slots × N pagadores con sub-columnas Predicho | Real, puntos por columna y ranking 1-10 al fondo. **Solo pagadores participan**; no-pagadores aparecen solo en la lista de "Quién debe".
 - **Leaderboard (`/leaderboard`):** tabla ordenada por `total_score`. Si aún no se revela → countdown.
 - **Admin panel (`/admin`):** crear cuentas (genera username = nombre, password = nombre+3 dígitos; modal muestra credenciales 1 sola vez con botón "Copiar todo" listo para WhatsApp). Toggle "Pagó/Sin pagar". Eliminar usuarios (excepto a ti mismo). Botón "Sync resultados ahora" (placeholder hasta que conectemos API real).
 - **Sistema de puntos v2 (validado con `tests/simulation.ts`):**
@@ -73,7 +85,9 @@ El seed imprime un cuadro con `usuario | password` para los 10 panas. **Cópialo
   - Sin bonus de orden exacto (se deriva implícitamente de los picks de P101/P102/P103/P104).
   - Top 4 derivado: campeón = pick P104; subcampeón = loser P104; 3° = pick P103; 4° = loser P103.
 - **Logo Altris** (`/public/logo.svg`) en todas las páginas con animación fade-in left-to-right (`@keyframes fadeInLeftToRight` en `globals.css`).
-- **Trofeo PNG** (`/public/world-cup-trophy.png`) con animación float (`@keyframes trophyFloat`) + drop-shadow verde-lima.
+- **Trofeo PNG** (`/public/world-cup-trophy.png`) con animación float (`@keyframes trophyFloat`) + drop-shadow verde-lima. Recortado de 2752×1536 (con franjas negras y marca de agua) a 870×1450 portrait apretado vía `sips` el 2026-05-13.
+- **QR de Deuna** en la landing (`/public/qr-deuna.jpeg`) debajo del login form, para que los panas paguen sin necesidad de que Ernesto les mande el QR por WhatsApp uno a uno.
+- **Tour modal** (`src/components/tour-modal.tsx`): 4 pasos (eliminado el viejo "Orden final top 4" — el top 4 se deriva ahora de P103/P104). Skip a "No, gracias" muestra despedida grande "bueno shunsho, espero lo logres!!!" con bounce-in (`@keyframes tourFarewell`).
 - **Optimizaciones:**
   - `/mi-polla` consolida 5 queries en 1 con CTEs/subqueries.
   - `/api/me/group-scores` y `/api/me/bracket-picks`: batch UPSERT con UNNEST en vez de N queries por save.
@@ -87,10 +101,9 @@ El seed imprime un cuadro con `usuario | password` para los 10 panas. **Cópialo
   2. Implementar el fetch + normalización de nombres de equipos contra `teams.code` (ISO3).
   3. Si hay mismatch, escribir a `scores_audit` con `status='needs_admin_review'`.
   4. Configurar `vercel.json` con cron diario a 8 AM ECU (`0 13 * * *` UTC).
-- **Deploy a Vercel:** no se ha hecho. Pasos: `vercel login` → `vercel` desde `polla/`. Env vars necesarias: `DATABASE_URL`, `AUTH_SECRET`, `AUTH_URL` (el URL del deployment). Opcional: `FOOTBALL_DATA_API_TOKEN`, `API_FOOTBALL_KEY`, `RESEND_API_KEY` para emails.
 - **Tabla FIFA de allocation de terceros:** encodeada en `src/data/fifa-third-place-allocation-2026.ts` con la elegibilidad por slot (de los PDFs). El matching usa backtracking. Si FIFA libera la tabla oficial 2026, reemplazar por lookup exacto.
-- **Polish móvil:** el bracket en pantallas < 1280px scrollea horizontalmente. Funciona pero hay margen para una vista colapsada por columnas en mobile. Resto de páginas ya son responsive.
-- **Tour modal:** funcional pero podría ser más vivo (animaciones entre steps).
+- **Polish móvil:** el bracket en pantallas < 1280px scrollea horizontalmente; la grilla de `/resultados` también scrollea horizontalmente cuando hay varios pagadores. Funciona pero hay margen para una vista colapsada (tabs por participante) en mobile. Resto de páginas ya son responsive.
+- **Monto en QR Deuna:** la sección de pago en la landing dice "Escanea para pagar por Deuna" sin monto explícito. Si quieres mostrar el monto del bolo, hardcodearlo en `src/app/page.tsx`.
 
 ---
 
@@ -113,6 +126,61 @@ Migraciones en `db/migrations/`:
 - **`src/lib/scoring.ts`:** función pura `scorePrediction(pred, official) → breakdown`. No toca DB.
 - **`src/lib/scoring-recompute.ts`:** llama al engine para todos los users `submitted` después de cada update de resultados oficiales. Acumula puntos en `predictions.total_score` + `score_breakdown` (jsonb).
 - **`src/lib/bracket-codes.ts`:** constantes únicas de los códigos P73-P104 + layout LEFT/RIGHT del bracket visual. Importar desde aquí en todos los consumidores (no duplicar arrays de codes).
+
+---
+
+## Producción / Vercel
+
+Live: **https://polla-mundial-2026-altris.vercel.app** (alias canónico de Vercel para el proyecto en el team `altris`). El deployment ID y URLs específicas cambian con cada push; el alias se mantiene.
+
+### Setup que se hizo el 2026-05-13
+
+```bash
+npm i -g vercel
+vercel whoami   # altristech
+cd polla
+vercel project add polla-mundial-2026   # scope: altris
+vercel link --yes --project polla-mundial-2026 --scope altris
+# env vars (production):
+echo -n "$DATABASE_URL"     | vercel env add DATABASE_URL production
+echo -n "$AUTH_SECRET"      | vercel env add AUTH_SECRET production
+echo -n "true"              | vercel env add AUTH_TRUST_HOST production
+vercel deploy --prod --yes
+```
+
+### Env vars en producción
+
+- `DATABASE_URL` — el mismo Neon connection string que usa local. La DB es compartida entre prod y local (mismo schema, mismos usuarios, mismas predicciones).
+- `AUTH_SECRET` — el mismo de `.env.local`. **Crítico** que sea idéntico o invalida sesiones existentes.
+- `AUTH_TRUST_HOST=true` — Auth.js v5 infiere el host del request. Esto sustituye a `AUTH_URL`, que en local apunta a `http://localhost:3000`. Con `AUTH_TRUST_HOST` no hace falta setear un URL fijo para prod.
+- (no se setean) `TOURNAMENT_START_ISO`, `PREDICTIONS_LOCK_ISO` — no se usan en código. Las fechas canónicas están en la tabla `app_config`.
+
+### Gotchas del primer deploy
+
+- **Framework auto-detection no funciona** cuando creas el proyecto vía `vercel project add` (API). Hay que setearlo manualmente. Sin `framework: "nextjs"` Vercel construye los assets pero el routing devuelve `x-vercel-error: NOT_FOUND` en todas las rutas. Fix vía API:
+  ```bash
+  curl -X PATCH -H "Authorization: Bearer $TOKEN" -H "content-type: application/json" \
+    -d '{"framework": "nextjs"}' \
+    "https://api.vercel.com/v9/projects/polla-mundial-2026?teamId=$TEAM_ID"
+  ```
+  Después de eso, `vercel deploy --prod --force` y todo funciona.
+- **SSO Deployment Protection viene activada por default** en proyectos de teams pagos (`deploymentType: all_except_custom_domains`). Esto gateaba el sitio detrás del login de Vercel — los panas no pueden ver nada. Se deshabilitó vía API:
+  ```bash
+  curl -X PATCH -H "Authorization: Bearer $TOKEN" -H "content-type: application/json" \
+    -d '{"ssoProtection": null}' \
+    "https://api.vercel.com/v9/projects/polla-mundial-2026?teamId=$TEAM_ID"
+  ```
+- **Vercel CLI auth token** se guarda en `~/Library/Application Support/com.vercel.cli/auth.json` en macOS.
+
+### Plan / hosting tier
+
+Proyecto está en team `altris` (plan pagado). La app cabe perfectamente en Hobby (10 usuarios, tráfico marginal, ~1.5 meses de uso pico junio-julio). Si se quiere mover a Hobby para no consumir asiento del team Altris:
+
+1. Settings → Advanced → "Transfer Project" desde la web de Vercel.
+2. Transferir a la cuenta personal de Ernesto.
+3. Mantiene deployment, dominio y history. Cero downtime.
+
+Riesgo de ToS en Hobby para este uso: virtualmente cero (10 amigos, plata afuera de Vercel via Deuna). El sitio corporativo de Altris (que captura leads) sí cae en "commercial use" y debería quedarse en plan pagado o moverse a Cloudflare Pages.
 
 ---
 
@@ -146,10 +214,11 @@ Si quieres bulk-create, edita `db/seed-participants.ts` (cuidado: borra todo y r
 
 ## Cuando arranques la siguiente sesión
 
-1. `cd polla && git pull` + revisa el estado del repo
-2. Confirma que `npm run typecheck` y `npm run dev` corren sin errores
-3. **Prueba el flow de login completo** con `ernesto / ernesto<los 3 dígitos del seed>`. Si te sale 404 o redirect loop → tu cookie está stale, abre en incognito.
-4. Lee este HANDOFF entero antes de tocar nada de auth, redirects o el schema de DB — son las áreas con más historial de bugs.
+1. `cd polla && git pull` + revisa el estado del repo.
+2. Confirma que `npm run typecheck` y `npm run dev` corren sin errores.
+3. **Prueba el flow de login completo** con `ernesto / ernesto<los 3 dígitos del seed>` (password de Ernesto al cierre de la sesión 2026-05-13: `ernesto921` — si reseed, cambia). Si te sale 404 o redirect loop → tu cookie está stale, abre en incognito.
+4. Para cambios en producción: edita, commitea, `git push origin main`, `vercel deploy --prod --yes` desde `polla/`. El CLI ya está linkeado (`.vercel/project.json` gitignored). DB es compartida con local — los cambios de schema afectan ambos ambientes.
+5. Lee este HANDOFF entero antes de tocar nada de auth, redirects o el schema de DB — son las áreas con más historial de bugs.
 
 ---
 
@@ -166,13 +235,17 @@ src/lib/tiebreakers.ts                 ← FIFA tiebreakers
 src/lib/bracket-codes.ts               ← codes P73-P104 + layout
 src/data/fifa-third-place-allocation-2026.ts  ← tabla oficial best-thirds
 
-src/app/page.tsx                       ← landing + login (PUBLIC)
+src/app/page.tsx                       ← landing + login + QR Deuna (PUBLIC)
 src/app/mi-polla/page.tsx              ← dashboard del usuario
 src/app/mi-polla/grupos/                ← fase de grupos (server + client)
-src/app/mi-polla/bracket/               ← bracket eliminación
-src/app/pronosticos/page.tsx           ← lista pública de predicciones
+src/app/mi-polla/bracket/               ← bracket eliminación + CTA de submit al fondo
+src/app/pronosticos/page.tsx           ← lista pública de predicciones (post-reveal)
+src/app/resultados/page.tsx            ← tracking público del Mundial (pre/post kickoff)
 src/app/leaderboard/page.tsx
 src/app/admin/                          ← admin (gated por is_admin)
+
+src/components/submit-confirm-modal.tsx ← modal compartido (checkbox + ENVIAR)
+src/components/tour-modal.tsx           ← tour 4 pasos + despedida shunsho
 
 src/app/api/auth/[...nextauth]/route.ts
 src/app/api/me/{group-scores,bracket-picks,submit,tour}/route.ts
