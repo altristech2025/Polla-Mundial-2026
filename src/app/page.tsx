@@ -37,6 +37,28 @@ export default async function Home() {
         <p className="text-xs text-muted font-mono">
           Cuenta solo con invitación. Ernesto te manda tu usuario y password por privado.
         </p>
+
+        <div className="pt-2 space-y-3 border-t border-border/60">
+          <div className="space-y-1">
+            <p className="text-xs uppercase tracking-[0.3em] text-accent font-mono">
+              Pago de la polla
+            </p>
+            <p className="text-sm text-foreground font-medium">
+              Escanea para pagar por Deuna
+            </p>
+          </div>
+          <div className="flex justify-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/qr-deuna.jpeg"
+              alt="Código QR para pagar la polla por Deuna"
+              className="w-48 h-48 rounded-xl border border-border bg-white p-2 shadow-[0_4px_24px_rgba(168,255,62,0.10)]"
+            />
+          </div>
+          <p className="text-xs text-muted">
+            Abre la app Deuna y escanea el QR con tu cámara.
+          </p>
+        </div>
       </div>
     </main>
   );

@@ -19,10 +19,6 @@ const STEPS: Step[] = [
     body: "Click en el equipo que crees que gana cada partido. El ganador sube al siguiente cruce. Hasta llegar a la final.",
   },
   {
-    title: "Orden final top 4",
-    body: "Define quién queda 1°, 2°, 3° y 4°. Acertar el orden exacto vale un bono jugoso.",
-  },
-  {
     title: "Enviar pronóstico",
     body: "Puedes editar hasta el 10 de junio 23:59. El 11 al amanecer, la app se cierra para edición y revela todos los pronósticos. Después, conforme avanza el Mundial, los puntos se acumulan en vivo.",
   },
@@ -33,7 +29,7 @@ export function TourModal({
 }: {
   onClose: (took: "tour" | "skip") => void;
 }) {
-  const [step, setStep] = useState<number | "intro">("intro");
+  const [step, setStep] = useState<number | "intro" | "farewell">("intro");
 
   if (step === "intro") {
     return (
@@ -42,17 +38,34 @@ export function TourModal({
           <div className="space-y-2">
             <h2 className="text-2xl font-bold">¿Te doy el tour?</h2>
             <p className="text-muted">
-              Te explico en 5 pasos cómo funciona la polla. Tarda menos de 1 minuto.
+              Te explico en 4 pasos cómo funciona la polla. Tarda menos de 1 minuto.
             </p>
           </div>
           <div className="flex flex-col gap-3">
             <Button size="lg" onClick={() => setStep(0)}>
               Dame el tour
             </Button>
-            <Button size="lg" variant="ghost" onClick={() => onClose("skip")}>
+            <Button size="lg" variant="ghost" onClick={() => setStep("farewell")}>
               No, gracias
             </Button>
           </div>
+        </div>
+      </Backdrop>
+    );
+  }
+
+  if (step === "farewell") {
+    return (
+      <Backdrop>
+        <div className="rounded-2xl bg-surface border border-border p-10 max-w-lg w-full space-y-8 text-center animate-tour-farewell">
+          <p className="text-3xl sm:text-4xl font-black text-accent leading-tight">
+            bueno shunsho,
+            <br />
+            espero lo logres!!!
+          </p>
+          <Button size="lg" onClick={() => onClose("skip")} className="w-full">
+            Listo
+          </Button>
         </div>
       </Backdrop>
     );

@@ -2,12 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ToastHost, showToast } from "@/components/toast";
 import { SaveBadge, type SaveStatus } from "@/components/save-badge";
+import { SubmitConfirmModal } from "@/components/submit-confirm-modal";
 import { cn } from "@/lib/utils";
 import {
+  ALL_BRACKET_CODES,
   LEFT_R32, RIGHT_R32, LEFT_R16, RIGHT_R16, LEFT_QF, RIGHT_QF,
 } from "@/lib/bracket-codes";
 
@@ -42,9 +45,30 @@ export function BracketClient({
   lockIso: string;
   submitted: boolean;
 }) {
+  const router = useRouter();
   const locked = submitted || new Date(lockIso).getTime() < Date.now();
   const [picks, setPicks] = useState<Record<string, string | null>>(initialPicks);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const [showSubmit, setShowSubmit] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const bracketPicksFilled = ALL_BRACKET_CODES.filter((c) => picks[c]).length;
+  const bracketComplete = bracketPicksFilled >= ALL_BRACKET_CODES.length;
+
+  const handleSubmit = async () => {
+    setSubmitting(true);
+    const res = await fetch("/api/me/submit", { method: "POST" });
+    setSubmitting(false);
+    if (!res.ok) {
+      const { error } = await res.json().catch(() => ({ error: "Error" }));
+      showToast(error ?? "No se pudo enviar.");
+      setShowSubmit(false);
+      return;
+    }
+    setShowSubmit(false);
+    showToast("✓ Pronóstico enviado. Suerte, pana.");
+    router.refresh();
+  };
 
   const pendingPickSave = useRef<Record<string, string | null>>({});
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -215,6 +239,13 @@ export function BracketClient({
   return (
     <>
       <ToastHost />
+      {showSubmit && (
+        <SubmitConfirmModal
+          onCancel={() => setShowSubmit(false)}
+          onConfirm={handleSubmit}
+          submitting={submitting}
+        />
+      )}
       <header className="border-b border-border">
         <div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between gap-4">
           <div className="flex items-center gap-4">
@@ -326,6 +357,39 @@ export function BracketClient({
             <Top4Card medal="🥉" label="Tercer puesto" team={third ? teamMap[third] : null} />
             <Top4Card medal="4°" label="Cuarto puesto" team={fourth ? teamMap[fourth] : null} />
           </div>
+
+          {/* CTA de envío definitivo */}
+          {!submitted && (
+            <div className="mt-12 max-w-2xl mx-auto">
+              <Card className={locked ? "opacity-60" : ""}>
+                <p className="text-xs uppercase tracking-widest text-accent font-mono">
+                  Paso final
+                </p>
+                <h3 className="mt-2 text-xl font-bold">Enviar pronóstico definitivo</h3>
+                <p className="mt-2 text-sm text-muted">
+                  {locked
+                    ? "Las predicciones están bloqueadas — la fecha límite ya pasó."
+                    : bracketComplete
+                    ? "Bracket listo. Cuando le des, queda quemado y nadie más puede cambiarlo."
+                    : `Te faltan ${ALL_BRACKET_CODES.length - bracketPicksFilled} picks del bracket.`}
+                </p>
+                <div className="mt-6">
+                  <Button
+                    size="lg"
+                    className="w-full"
+                    disabled={!bracketComplete || locked || submitting}
+                    onClick={() => setShowSubmit(true)}
+                  >
+                    Enviar pronóstico definitivo
+                  </Button>
+                </div>
+                <p className="mt-3 text-xs text-muted text-center">
+                  Ojo: si te falta algún marcador en la fase de grupos, el envío
+                  también te lo va a pedir.
+                </p>
+              </Card>
+            </div>
+          )}
         </div>
       </main>
     </>

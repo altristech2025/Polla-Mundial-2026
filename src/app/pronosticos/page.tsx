@@ -105,7 +105,10 @@ export default async function PronosticosPage() {
                 </p>
               </div>
             </div>
-            <Link href="/mi-polla"><Button variant="ghost" size="sm">Mi polla</Button></Link>
+            <div className="flex items-center gap-2">
+              <Link href="/resultados"><Button variant="ghost" size="sm">Resultados</Button></Link>
+              <Link href="/mi-polla"><Button variant="ghost" size="sm">Mi polla</Button></Link>
+            </div>
           </header>
 
           <Countdown

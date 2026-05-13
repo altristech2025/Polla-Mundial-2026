@@ -8,6 +8,7 @@ import { Countdown } from "@/components/countdown";
 import { TourModal } from "@/components/tour-modal";
 import { ToastHost, showToast } from "@/components/toast";
 import { BrandLogo } from "@/components/brand-logo";
+import { SubmitConfirmModal } from "@/components/submit-confirm-modal";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 
@@ -97,6 +98,9 @@ export function MiPollaClient({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Link href="/resultados">
+              <Button variant="ghost" size="sm">Resultados</Button>
+            </Link>
             <Link href="/pronosticos">
               <Button variant="ghost" size="sm">Pronósticos</Button>
             </Link>
@@ -248,43 +252,3 @@ function StepCard({
   return <Link href={href}>{inner}</Link>;
 }
 
-function SubmitConfirmModal({
-  onCancel,
-  onConfirm,
-  submitting,
-}: {
-  onCancel: () => void;
-  onConfirm: () => void;
-  submitting: boolean;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
-      <div className="rounded-2xl bg-surface border border-border p-8 max-w-md w-full space-y-6">
-        <div>
-          <p className="text-xs uppercase tracking-widest text-warning font-mono">
-            ⚠ Última oportunidad
-          </p>
-          <h2 className="text-2xl font-bold mt-2">¿Enviar tu pronóstico?</h2>
-          <p className="mt-2 text-sm text-muted">
-            Una vez enviado, <strong>no se puede deshacer</strong>. Quedará quemado
-            y nadie (ni siquiera Ernesto) puede modificarlo. Hasta el día antes
-            del Mundial puedes seguir editando libremente sin enviar.
-          </p>
-        </div>
-        <div className="flex gap-3">
-          <Button
-            variant="ghost"
-            onClick={onCancel}
-            disabled={submitting}
-            className="flex-1"
-          >
-            Mejor sigo ajustando
-          </Button>
-          <Button onClick={onConfirm} disabled={submitting} className="flex-1">
-            {submitting ? "Enviando…" : "Sí, enviar"}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
