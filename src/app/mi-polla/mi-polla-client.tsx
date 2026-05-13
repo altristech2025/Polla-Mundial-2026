@@ -104,6 +104,9 @@ export function MiPollaClient({
             <Link href="/pronosticos">
               <Button variant="ghost" size="sm">Pronósticos</Button>
             </Link>
+            <Link href="/reglas">
+              <Button variant="ghost" size="sm">Reglas</Button>
+            </Link>
             {isAdmin && (
               <Link href="/admin">
                 <Button variant="secondary" size="sm">Admin</Button>

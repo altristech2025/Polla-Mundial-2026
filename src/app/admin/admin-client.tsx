@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -14,6 +15,7 @@ type User = {
   display_name: string;
   is_admin: boolean;
   has_paid: boolean;
+  is_suspended: boolean;
   created_at: string;
   total_score: number;
   prediction_status: string | null;
@@ -26,6 +28,7 @@ export function AdminClient({
   initialUsers: User[];
   currentUserId: string;
 }) {
+  const router = useRouter();
   const [users, setUsers] = useState(initialUsers);
   const [name, setName] = useState("");
   const [makeAdmin, setMakeAdmin] = useState(false);
@@ -56,23 +59,53 @@ export function AdminClient({
     setMakeAdmin(false);
   }
 
-  async function togglePaid(userId: string, currentlyPaid: boolean) {
-    const next = !currentlyPaid;
-    setUsers((prev) =>
-      prev.map((u) => (u.id === userId ? { ...u, has_paid: next } : u))
-    );
-    const res = await fetch("/api/admin/users/paid", {
+  async function toggleField(
+    userId: string,
+    field: "has_paid" | "is_suspended",
+    current: boolean,
+    config: {
+      endpoint: string;
+      bodyKey: string;
+      errorMsg: string;
+      successMsg?: (next: boolean) => string;
+    }
+  ) {
+    const next = !current;
+    const apply = (value: boolean) =>
+      setUsers((prev) =>
+        prev.map((u) => (u.id === userId ? { ...u, [field]: value } : u))
+      );
+    apply(next);
+    const res = await fetch(config.endpoint, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ userId, hasPaid: next }),
+      body: JSON.stringify({ userId, [config.bodyKey]: next }),
     });
     if (!res.ok) {
-      setUsers((prev) =>
-        prev.map((u) => (u.id === userId ? { ...u, has_paid: currentlyPaid } : u))
-      );
-      showToast("No se pudo actualizar el pago.");
+      apply(current);
+      const { error } = await res.json().catch(() => ({ error: null }));
+      showToast(error ?? config.errorMsg);
+      return;
     }
+    if (config.successMsg) showToast(config.successMsg(next));
+    router.refresh();
   }
+
+  const togglePaid = (userId: string, currentlyPaid: boolean) =>
+    toggleField(userId, "has_paid", currentlyPaid, {
+      endpoint: "/api/admin/users/paid",
+      bodyKey: "hasPaid",
+      errorMsg: "No se pudo actualizar el pago.",
+    });
+
+  const toggleSuspended = (userId: string, currentlySuspended: boolean) =>
+    toggleField(userId, "is_suspended", currentlySuspended, {
+      endpoint: "/api/admin/users/suspended",
+      bodyKey: "suspended",
+      errorMsg: "No se pudo actualizar el estado.",
+      successMsg: (next) =>
+        next ? "Pana retirado momentáneamente." : "Pana recolocado.",
+    });
 
   async function removeUser(userId: string, displayName: string) {
     if (!confirm(`¿Eliminar la cuenta de ${displayName}? Esto borra su pronóstico también.`))
@@ -210,6 +243,21 @@ export function AdminClient({
                   >
                     {u.has_paid ? "✓ Pagó" : "Sin pagar"}
                   </button>
+
+                  {u.id !== currentUserId && (
+                    <button
+                      onClick={() => toggleSuspended(u.id, u.is_suspended)}
+                      className={
+                        "rounded-full px-3 py-1 text-xs font-mono uppercase tracking-widest transition-colors cursor-pointer " +
+                        (u.is_suspended
+                          ? "bg-error/20 text-error border border-error/40 hover:bg-error/30"
+                          : "bg-surface-elevated text-muted border border-border hover:bg-surface")
+                      }
+                      title={u.is_suspended ? "Recolocar en la polla" : "Retirar momentáneamente"}
+                    >
+                      {u.is_suspended ? "Recolocar" : "Retirar"}
+                    </button>
+                  )}
 
                   <div className="text-right">
                     <p className="font-mono tabular-nums text-sm">{u.total_score} pts</p>

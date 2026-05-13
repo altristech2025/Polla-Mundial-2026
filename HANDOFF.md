@@ -96,11 +96,34 @@ El seed imprime un cuadro con `usuario | password` para los 10 panas. **Cópialo
 
 ### ⚠️ Pendiente / parcial
 
-- **Cron de resultados reales:** `src/lib/sync-results.ts` está en placeholder. Para producción, conectar `football-data.org` (free tier) y `api-football.com` (fallback). Falta:
-  1. Registrarse en ambos y meter las API keys en env vars (`FOOTBALL_DATA_API_TOKEN`, `API_FOOTBALL_KEY`).
-  2. Implementar el fetch + normalización de nombres de equipos contra `teams.code` (ISO3).
-  3. Si hay mismatch, escribir a `scores_audit` con `status='needs_admin_review'`.
-  4. Configurar `vercel.json` con cron diario a 8 AM ECU (`0 13 * * *` UTC).
+- **Cron de resultados reales** ⚠️ **debe estar listo antes del kickoff (11-jun-2026 18:00 ECU)** — si no, la columna REAL de `/resultados` queda en blanco durante todo el Mundial y los totales de los panas no se actualizan:
+  - Hoy `src/lib/sync-results.ts` es un placeholder: solo loggea un evento en `scores_audit` y llama `recomputeAllScores()`. **No hace fetch de ninguna fuente externa.**
+  - El botón "Sync resultados ahora" en `/admin` invoca a `/api/admin/sync` que llama al placeholder — por eso no pasa nada cuando lo aprietas.
+  - **Por eso `/resultados` actualmente muestra todas las celdas REAL en `—` y todos los TOTAL en 0**: no porque esté roto, sino porque las columnas `group_matches.official_*_score` y `bracket_matches.official_winner_id / official_loser_id` están en NULL en la DB.
+  - Pasos pendientes (en orden) para implementarlo:
+    1. **Elegir API**: `football-data.org` (free tier, 10 req/min, suficiente) como primaria y `api-football.com` (fallback) como secundaria. Registrarse en ambas (~5 min cada una).
+    2. **Env vars**: agregar `FOOTBALL_DATA_API_TOKEN` y `API_FOOTBALL_KEY` en Vercel (production) y `.env.local` (dev).
+    3. **Implementar `sync-results.ts`**:
+       - Fetch los partidos del Mundial 2026 (competition id `WC` o `2000` en football-data).
+       - Normalizar nombres de equipos contra `teams.code` (ISO3 alpha-3, ej `ARG`, `BRA`).
+       - Para partidos terminados: `update group_matches set official_home_score = X, official_away_score = Y where home_team_id = ... and away_team_id = ...`.
+       - Para bracket: `update bracket_matches set official_winner_id = ... , official_loser_id = ... where match_code = ...`.
+       - Después de cada sync: llamar `recomputeAllScores()`.
+       - Si hay mismatch (un team en la API que no matchea ningún ISO3), escribir a `scores_audit` con `status='needs_admin_review'`.
+    4. **Cron Vercel**: agregar `vercel.json` con cron diario a 8 AM ECU (`0 13 * * *` UTC) llamando a `/api/admin/sync`. Ojo: Hobby plan permite solo cron diarios; si necesitas más frecuencia durante el Mundial (cada hora idealmente), revisar el plan o usar GitHub Actions como alternativa gratis.
+  - **Atajo manual mientras no hay cron** (útil para testing o si la API falla durante el Mundial): insertar resultados directo a la DB y correr recompute. Script de ejemplo:
+    ```bash
+    npx tsx --env-file=.env.local -e "
+      import { sql } from './src/lib/db';
+      import { recomputeAllScores } from './src/lib/scoring-recompute';
+      (async () => {
+        await sql\`update group_matches set official_home_score = 2, official_away_score = 1 where id = '<match-uuid>'\`;
+        await recomputeAllScores();
+        console.log('done');
+      })();
+    "
+    ```
+    Práctico para parchar 1-2 partidos a mano si el cron se cae temporalmente.
 - **Expandir `/resultados` con rondas eliminatorias.** Hoy la grilla solo muestra los 32 que pasan de fase de grupos (12 grupos × 3 slots). Falta agregar más secciones de filas para mostrar predicho-vs-real de:
   - **R16** (16 picks: ganadores de cada cruce P73–P88).
   - **Cuartos / R8** (8 picks: ganadores de octavos).

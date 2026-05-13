@@ -133,7 +133,7 @@ export async function recomputeAllScores(): Promise<number> {
  * Construye los OfficialResults a partir de los resultados oficiales actuales
  * en DB (group_matches.official_* y bracket_matches.official_*).
  */
-function buildOfficialResults(
+export function buildOfficialResults(
   teamsByGroup: Record<GroupLetter, string[]>,
   groupMatches: GroupMatchRow[],
   bracketMatches: BracketRow[]
@@ -203,7 +203,7 @@ function buildOfficialResults(
   };
 }
 
-function buildUserPrediction(
+export function buildUserPrediction(
   userId: string,
   scores: PredScoreRow[],
   picks: PredPickRow[],

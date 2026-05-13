@@ -9,6 +9,7 @@ type UserRow = {
   display_name: string;
   is_admin: boolean;
   has_paid: boolean;
+  is_suspended: boolean;
   created_at: string;
   total_score: number;
   prediction_status: string | null;
@@ -26,6 +27,7 @@ export default async function AdminPage() {
       u.display_name,
       u.is_admin,
       u.has_paid,
+      u.is_suspended,
       u.created_at::text,
       coalesce(p.total_score, 0) as total_score,
       p.status as prediction_status

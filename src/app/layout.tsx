@@ -29,6 +29,20 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
         {children}
+        <footer className="mt-auto py-6 border-t border-border">
+          <div className="mx-auto max-w-6xl px-6 flex items-center justify-center gap-2 text-xs text-muted">
+            <span>Powered by</span>
+            <a
+              href="https://altristech.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center hover:opacity-80 transition-opacity"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/logo.svg" alt="Altris" className="h-4" />
+            </a>
+          </div>
+        </footer>
       </body>
     </html>
   );
